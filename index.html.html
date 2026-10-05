@@ -1,0 +1,49 @@
+<!-- นำเข้า Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+  // ค่า Config ที่ได้จาก Firebase Console
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "SENDER_ID",
+    appId: "APP_ID"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  const requestsCollection = collection(db, "aircon_requests");
+
+  // 1. ดึงข้อมูลแบบ Real-time (มาแทนที่การ load() จาก localStorage)
+  onSnapshot(requestsCollection, (snapshot) => {
+    data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    render(); // ฟังก์ชัน render เดิมในโค้ดของคุณ
+  });
+
+  // 2. ปรับการบันทึกข้อมูล (นำไปใช้แทน persist() และบันทึกลง Firestore)
+  window.saveToFirestore = async function(rec) {
+    if (rec.id && data.some(r => r.id === rec.id)) {
+      // แก้ไขรายการเดิม
+      const docRef = doc(db, "aircon_requests", rec.id);
+      const { id, ...dataToUpdate } = rec;
+      await updateDoc(docRef, dataToUpdate);
+    } else {
+      // เพิ่มรายการใหม่
+      const { id, ...dataToAdd } = rec;
+      await addDoc(requestsCollection, dataToAdd);
+    }
+  };
+
+  // 3. ปรับการลบข้อมูล
+  window.deleteFromFirestore = async function(id) {
+    await deleteDoc(doc(db, "aircon_requests", id));
+  };
+</script>
