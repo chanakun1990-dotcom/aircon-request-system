@@ -295,15 +295,14 @@ $("f").addEventListener("submit",e=>{
   if(rec.t2<rec.t1&&!confirm(`เวลาสิ้นสุด (${rec.t2}) น้อยกว่าเวลาเริ่ม (${rec.t1})\nระบบจะนับเป็นการใช้งานข้ามเที่ยงคืน รวม ${hpd(rec)} ชม./วัน\nยืนยันหรือไม่?`)){e.preventDefault();return}
   const cf=conflictsFor(rec,editId);
   if(cf.length&&!confirm(`พบการขอซ้อนเวลา ${cf.length} วัน:\n`+cf.slice(0,4).map(c=>`• ${thDate(c.d)} ${c.r.dept} ${c.r.t1}–${c.r.t2}`).join("\n")+(cf.length>4?`\n… และอีก ${cf.length-4} วัน`:"")+"\n\nต้องการบันทึกต่อหรือไม่?")){e.preventDefault();return}
-  if(editId)data=data.map(r=>r.id===editId?rec:r);else data.push(rec);
-  persist();render();
+  await saveToFirestore(rec);
 });
 $("thead").addEventListener("click",e=>{const k=e.target.dataset.k;if(!k)return;sort=sort.k===k?{k,d:-sort.d}:{k,d:1};render()});
 $("thead").addEventListener("keydown",e=>{if(e.key==="Enter")e.target.click()});
 $("rows").addEventListener("click",e=>{
   const ed=e.target.dataset.e,del=e.target.dataset.d;
   if(ed)openForm(data.find(r=>r.id===ed));
-  if(del&&confirm("ลบคำขอนี้ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้")){data=data.filter(r=>r.id!==del);persist();render()}
+  if(del&&confirm("ลบคำขอนี้ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้")){await deleteFromFirestore(del);}
 });
 $("csv").onclick=()=>{
   const h=["วันที่ยื่น","หน่วยงาน","ผู้ขอ/เบอร์โทร","อาคาร","ชั้น","พื้นที่","วันที่เริ่ม","วันที่สิ้นสุด","วันในสัปดาห์","วันที่ยกเว้น","จำนวนวันใช้งาน","เวลาเริ่ม","เวลาสิ้นสุด","ชั่วโมง/วัน","ชั่วโมงรวม","เหตุผล","หมายเหตุ"];
@@ -505,5 +504,66 @@ function conflictIds(){
 const CTAG=' <span class="tag s-no">ซ้อนเวลา</span>';
 load();checkBackup();render();show("dash");
 </script>
+ <!-- นำเข้า Firebase SDK ผ่าน CDN (วางไว้ก่อนปิด </body>) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // 1. นำชุดคีย์ firebaseConfig ที่ก๊อปมาจาก Firebase Console มาวางตรงนี้
+ const firebaseConfig = {
+  apiKey: "AIzaSyAfSLeu4MxQhMF991Zlf0sVNmyU6vD4_b0",
+  authDomain: "aircon-request.firebaseapp.com",
+  projectId: "aircon-request",
+  storageBucket: "aircon-request.firebasestorage.app",
+  messagingSenderId: "364757075686",
+  appId: "1:364757075686:web:d27eddc5b12ba4905fdd27",
+  measurementId: "G-RDYGEKT7DN"
+};
+
+  // 2. เริ่มต้นเชื่อมต่อ Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const colRef = collection(db, "aircon_requests");
+
+  // 3. ดึงข้อมูลแบบ Real-time (มาแทนที่ฟังก์ชัน load() เดิม)
+  // ทุกครั้งที่มีใคร เพิ่ม/แก้ไข/ลบ ข้อมูลในฐานข้อมูล ฟังก์ชันนี้จะทำงานให้อัตโนมัติทันที
+  onSnapshot(colRef, (snapshot) => {
+    data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    render(); // เรียกฟังก์ชัน render() เดิมในโค้ดเพื่อวาดหน้าตารางและแดชบอร์ดใหม่
+  });
+
+  // 4. บันทึก/แก้ไข ข้อมูลลง Firestore (ใช้แทน persist())
+  window.saveToFirestore = async function(rec) {
+    try {
+      if (editId && data.some(r => r.id === editId)) {
+        // กรณีแก้ไขรายการเดิม
+        const docRef = doc(db, "aircon_requests", editId);
+        const { id, ...dataToSave } = rec;
+        await updateDoc(docRef, dataToSave);
+      } else {
+        // กรณีเพิ่มรายการใหม่
+        const { id, ...dataToSave } = rec;
+        await addDoc(colRef, dataToSave);
+      }
+    } catch (e) {
+      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + e.message);
+    }
+  };
+
+  // 5. ลบข้อมูลจาก Firestore
+  window.deleteFromFirestore = async function(id) {
+    try {
+      await deleteDoc(doc(db, "aircon_requests", id));
+    } catch (e) {
+      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + e.message);
+    }
+  };
+</script>
 </body>
+ 
 </html>
